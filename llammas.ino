@@ -35,8 +35,9 @@
 #include "lfoFreqArray.h"
 
 #define CONTROL_RATE 256
+#define LED 13
 
-
+MIDI_CREATE_DEFAULT_INSTANCE();
 
 //Array of sound generating units. (numerically controlled oscillators)
 Oscil < SAW512_NUM_CELLS, AUDIO_RATE > nco[] = {
@@ -46,9 +47,9 @@ Oscil < SAW512_NUM_CELLS, AUDIO_RATE > nco[] = {
 Oscil < SIN512_NUM_CELLS, CONTROL_RATE > lfo_one(SIN512_DATA),
 lfo_two(SIN512_DATA);
 //Amplitude envelope
-ADSR < CONTROL_RATE > adsr_envelope;
+ADSR < CONTROL_RATE, AUDIO_RATE > adsr_envelope;
 //Filter Envelope
-ADSR < CONTROL_RATE > adsr_filter;
+ADSR < CONTROL_RATE, AUDIO_RATE > adsr_filter;
 
 
 //Buffer of last received midi notes
@@ -98,7 +99,7 @@ int global_lfo = 0;
 *Reads a float array from ROM at the index indicated by the most significant byte
 *Of the midi message and set the value as the current pitch bend amount.
 */
-void handle_pitch_bend(byte channel, byte lsb, byte msb) {
+void handle_pitch_bend(byte channel, int msb) {
 
     pb_amount = pgm_read_float_near(PB_ARRAY + msb);
     play_note(last_midi_note);
@@ -124,6 +125,8 @@ void handle_note_on(byte channel, byte note, byte velocity) {
     play_note((float) note);
     adsr_filter.noteOn();
     adsr_envelope.noteOn();
+
+    digitalWrite(LED, HIGH);
 }
 
 /*
@@ -165,6 +168,7 @@ void handle_note_off(byte channel, byte note, byte velocity) {
     } else {
         adsr_filter.noteOff();
         adsr_envelope.noteOff();
+        digitalWrite(LED, LOW);
     }
 }
 
@@ -462,16 +466,17 @@ int updateAudio() {
 
 
     //adds the ncos together.
-    int total = ((osc1*nco_levels[0]>>8) + (osc2*nco_levels[0]>>8) + (osc3*nco_levels[0]>>8)) >> 2;
-
+    //int total = ((osc1*nco_levels[0]>>8) + (osc2*nco_levels[0]>>8) + (osc3*nco_levels[0]>>8)) >> 2;
+    int total = ((osc1*nco_levels[0]>>8) + (osc2*nco_levels[0]>>8) + (osc3*nco_levels[0]>>8)) >> 3;
+    
     //apply the global lfo.
     if(global_lfo) {
         total = (total*global_lfo)>>7;
     }
 
     //applies the filter and the envelope.
-    return (int) (adsr_envelope.next() * (mf.next(total))) >> 2;
-
+    return (int) ((adsr_envelope.next() >> 1) * (mf.next(total) >> 1)) >> 3;
+    // return (int) (adsr_envelope.next() * (mf.next(total))) >> 2;
 
 }
 
